@@ -9,7 +9,7 @@ int main(int argc, char** argv) {
     }
     Lua::Engine engine;
     auto result = engine.load_script(argv[1]);
-    if (result.error) {
+    if (result.failed()) {
         std::cout << "error: " << result.error << std::endl;
         return 1;
     }
@@ -21,12 +21,8 @@ int main(int argc, char** argv) {
     if (!ok) {
         std::cout << "not all returned OK" << std::endl;
         for (auto& pair : result_map) {
-            if (pair.second.error) {
-                std::cout << pair.first << ": " << pair.second.error;
-                if (pair.second.value.has_value()) {
-                    std::cout << ": " << std::any_cast<std::string>(pair.second.value);
-                }
-                std::cout << std::endl;
+            if (pair.second.failed()) {
+                std::cout << pair.first << ": " << pair.second.error << std::endl;
             } else {
                 std::cout << pair.first << ": OK" << std::endl;
             }

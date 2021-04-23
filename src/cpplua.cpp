@@ -36,12 +36,12 @@ Lua::Result<Lua::Script::Pointer> Lua::Engine::load_script(const std::string& fi
     }
     script->set_buffer(std::move(buffer));
     auto result = script->load();
-    if (result.error) {
+    if (result.failed()) {
         return { result.error, nullptr };
     }
     auto lock = acquire_unique_lock();
     m_scripts.push_back(script);
-    return { nullptr, script };
+    return { {}, script };
 }
 
 bool Lua::Engine::is_loaded(const std::string& filename) {
@@ -75,7 +75,7 @@ std::unordered_map<std::string, Lua::Result<std::any>> Lua::Engine::call_in_all_
     }
     for (auto& script : m_scripts) {
         auto res = script->call_function(function_name, args);
-        if (all_ok_ptr && res.error) {
+        if (all_ok_ptr && res.failed()) {
             *all_ok_ptr = false;
         }
         map[script->filename()] = std::move(res);
@@ -100,7 +100,7 @@ Lua::Script::~Script() {
     lua_close(m_state);
 }
 
-Lua::Result<std::string> Lua::Script::load() {
+Lua::Result<void> Lua::Script::load() {
     if (m_loaded) {
         return { "already loaded" };
     } else if (m_buffer.empty()) {
@@ -108,10 +108,25 @@ Lua::Result<std::string> Lua::Script::load() {
     } else if (m_filename.empty()) {
         return { "empty filename" };
     }
-    bool ret = luaL_dostring(m_state, m_buffer.data());
-    if (!ret) {
-        std::string error_message = lua_tostring(m_state, -1);
-        return { "runtime error, error message supplied in return value", error_message };
+    int ret = luaL_loadstring(m_state, m_buffer.data());
+    if (ret == LUA_OK) {
+        ret = lua_pcall(m_state, 0, LUA_MULTRET, 0);
+        if (ret == LUA_OK) {
+            m_loaded = true;
+            return {};
+        } else if (ret == LUA_ERRRUN) { // runtime error
+            const char* msg = lua_tostring(m_state, -1);
+            std::string error_message = msg ? msg : "(null)";
+            return { "runtime error: " + error_message };
+        } else {
+            const char* msg = lua_tostring(m_state, -1);
+            std::string error_message = msg ? msg : "(null)";
+            return { "error running lua file: " + error_message };
+        }
+    } else {
+        const char* msg = lua_tostring(m_state, -1);
+        std::string error_message = msg ? msg : "(null)";
+        return { "could not load lua (syntax error?): " + error_message };
     }
 }
 
@@ -158,17 +173,20 @@ Lua::Result<std::any> Lua::Script::call_function(const std::string& str, std::in
         case LUA_TBOOLEAN:
             result = bool(lua_toboolean(m_state, -1));
             break;
-        case LUA_TSTRING:
-            result = std::string(lua_tostring(m_state, -1));
+        case LUA_TSTRING: {
+            const char* msg = lua_tostring(m_state, -1);
+            result = std::string(msg ? msg : "(null)");
             break;
+        }
         default:
             result = (void*)lua_topointer(m_state, -1);
         }
-        return { nullptr, result };
+        return { {}, result };
     }
     case LUA_ERRRUN: { // runtime error
-        std::string error_message = lua_tostring(m_state, -1);
-        return { "runtime error, error message supplied in return value", error_message };
+        const char* msg = lua_tostring(m_state, -1);
+        std::string error_message = msg ? msg : "(null)";
+        return { "runtime error: " + error_message, {} };
     }
     case LUA_ERRERR:
         // message handler error, can't happen since we don't specify one

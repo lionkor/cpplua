@@ -12,13 +12,17 @@ namespace Lua {
 
 template<typename T>
 struct Result {
-    const char* error;
+    bool ok() { return error.empty(); }
+    bool failed() { return !error.empty(); }
+    std::string error;
     T value;
 };
 
 template<>
 struct Result<void> {
-    const char* error;
+    bool ok() { return error.empty(); }
+    bool failed() { return !error.empty(); }
+    std::string error {};
 };
 
 class Script {
@@ -38,14 +42,12 @@ public:
     std::vector<char>& buffer() { return m_buffer; }
     // lua state for this file
     lua_State* state() { return m_state; }
-    // loads & initializes the buffer. returns an error + error message in case of errors.
-    Result<std::string> load();
+    // loads & initializes the buffer.
+    [[nodiscard]] Result<void> load();
     // calls the function, returns an error if it failed, or the function's return value
     // if it succeeded.
-    // on error, check the result's value, if it exists, it will contain detailed information
-    // about the error.
     // if the result is not a primitive like string, integer or number, it will be returned as void*.
-    Result<std::any> call_function(const std::string& str, std::initializer_list<std::any> args);
+    [[nodiscard]] Result<std::any> call_function(const std::string& str, std::initializer_list<std::any> args);
 
 private:
     Script();
