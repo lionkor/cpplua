@@ -13,5 +13,7 @@ int main(int argc, char** argv) {
         std::cout << "error: " << result.error << std::endl;
     } else {
         std::cout << "ok!" << std::endl;
+        std::cout << (engine.is_loaded(argv[1]) ? "true" : "false") << std::endl;
+        engine.unload_script(argv[1]);
     }
 }
