@@ -112,6 +112,14 @@ Lua::Script::~Script() {
     lua_close(m_state);
 }
 
+void Lua::Script::set_filename(const std::string& filename) {
+    m_filename = filename;
+}
+
+void Lua::Script::set_buffer(std::vector<char>&& buffer) {
+    std::swap(m_buffer, buffer);
+}
+
 Lua::Result<void> Lua::Script::load() {
     if (m_loaded) {
         return { "already loaded" };
