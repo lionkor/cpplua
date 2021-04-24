@@ -1,5 +1,6 @@
 #include <any>
 #include <atomic>
+#include <functional>
 #include <initializer_list>
 #include <lua.hpp>
 #include <memory>
@@ -25,6 +26,11 @@ struct Result<void> {
     std::string error {};
 };
 
+enum CallFlags {
+    None = 0,
+    IgnoreNotExists = 1 << 0, // if the function doesn't exist, don't consider it an error
+};
+
 class Script {
 public:
     ~Script();
@@ -48,6 +54,7 @@ public:
     // if it succeeded.
     // if the result is not a primitive like string, integer or number, it will be returned as void*.
     [[nodiscard]] Result<std::any> call_function(const std::string& str, std::initializer_list<std::any> args);
+    [[nodiscard]] bool has_function_with_name(const std::string& name);
 
 private:
     Script();
@@ -63,13 +70,27 @@ public:
     Engine();
     ~Engine();
 
+    // Load the script from a file and initializes it.
     [[nodiscard]] Result<Script::Pointer> load_script(const std::string& filename);
+    // Whether the specified script is currently loaded.
     bool is_loaded(const std::string& filename);
+    // Removes the script from the engine.
     void unload_script(const Script::Pointer& script);
     void unload_script(const std::string& filename);
+    // nullptr if nothing was found.
     Script::Pointer get_script_by_name(const std::string& filename);
 
-    [[nodiscard]] std::unordered_map<std::string, Result<std::any>> call_in_all_scripts(const std::string& function_name, std::initializer_list<std::any> args, bool* all_ok);
+    // Calls a function in all scripts.
+    // The returned map maps the names of the scripts (full paths) to their return values.
+    // For more info on these return values, check Lua::Script::call_function.
+    // function_name:   Exact name of the function to call.
+    // args:            Arguments to pass to each function call. Will be copied.
+    // all_ok_ptr:      Will be set to false if any of the calls failed.
+    // flags:           Options for the calling of these functions. For example, you could ignore when a function does not exist.
+    [[nodiscard]] std::unordered_map<std::string, Result<std::any>> call_in_all_scripts(const std::string& function_name, std::initializer_list<std::any> args, bool* all_ok = nullptr, CallFlags flags = CallFlags::None);
+
+    // Registers the given function as a global function. It has to be a extern C function.
+    void register_global_function(const std::string& name, lua_CFunction Fn);
 
 private:
     std::shared_lock<std::shared_mutex> acquire_shared_lock() { return std::shared_lock<std::shared_mutex> { m_scripts_mutex }; }

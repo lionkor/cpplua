@@ -67,13 +67,17 @@ Lua::Script::Pointer Lua::Engine::get_script_by_name(const std::string& filename
     return unsafe_get_script_by_name(filename);
 }
 
-std::unordered_map<std::string, Lua::Result<std::any>> Lua::Engine::call_in_all_scripts(const std::string& function_name, std::initializer_list<std::any> args, bool* all_ok_ptr) {
+std::unordered_map<std::string, Lua::Result<std::any>> Lua::Engine::call_in_all_scripts(const std::string& function_name, std::initializer_list<std::any> args, bool* all_ok_ptr, Lua::CallFlags flags) {
     std::unordered_map<std::string, Lua::Result<std::any>> map;
     auto lock = acquire_shared_lock();
     if (all_ok_ptr) {
         *all_ok_ptr = true;
     }
     for (auto& script : m_scripts) {
+        if (flags & CallFlags::IgnoreNotExists
+            && !script->has_function_with_name(function_name)) {
+            continue;
+        }
         auto res = script->call_function(function_name, args);
         if (all_ok_ptr && res.failed()) {
             *all_ok_ptr = false;
@@ -81,6 +85,14 @@ std::unordered_map<std::string, Lua::Result<std::any>> Lua::Engine::call_in_all_
         map[script->filename()] = std::move(res);
     }
     return map;
+}
+
+void Lua::Engine::register_global_function(const std::string& name, lua_CFunction Fn) {
+    auto lock = acquire_unique_lock();
+    for (auto& script : m_scripts) {
+        auto L = script->state();
+        lua_register(L, name.c_str(), Fn);
+    }
 }
 
 Lua::Script::Pointer Lua::Engine::unsafe_get_script_by_name(const std::string& filename) {
@@ -137,6 +149,9 @@ Lua::Result<std::any> Lua::Script::call_function(const std::string& str, std::in
     int stack_top_before = lua_gettop(m_state);
     // get & push the function
     int type = lua_getglobal(m_state, str.c_str());
+    if (type == LUA_TNIL) {
+        return { "no such function \"" + str + "\"", {} };
+    }
     if (type != LUA_TFUNCTION) {
         return { "attempt to call object that isn't a function", {} };
     }
@@ -194,6 +209,14 @@ Lua::Result<std::any> Lua::Script::call_function(const std::string& str, std::in
     default:
         return { "unknown / generic error in pcall", {} };
     }
+}
+
+bool Lua::Script::has_function_with_name(const std::string& name) {
+    int type = lua_getglobal(m_state, name.c_str());
+    if (type != LUA_TFUNCTION) {
+        return false;
+    }
+    return true;
 }
 
 Lua::Script::Script()

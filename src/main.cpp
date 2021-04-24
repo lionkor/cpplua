@@ -2,6 +2,11 @@
 
 #include <iostream>
 
+extern "C" int lua_ping(lua_State* state) {
+    std::cout << state << ": PONG :)" << std::endl;
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc == 1) {
         std::cout << argv[0] << ": expected argument <filename>" << std::endl;
@@ -17,7 +22,8 @@ int main(int argc, char** argv) {
     std::cout << (engine.is_loaded(argv[1]) ? "true" : "false") << std::endl;
 
     bool ok;
-    auto result_map = engine.call_in_all_scripts("Test", {}, &ok);
+    engine.register_global_function("ping", lua_ping);
+    auto result_map = engine.call_in_all_scripts("Test", {}, &ok, Lua::CallFlags::IgnoreNotExists);
     if (!ok) {
         std::cout << "not all returned OK" << std::endl;
         for (auto& pair : result_map) {
